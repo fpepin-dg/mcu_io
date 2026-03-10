@@ -1,0 +1,32 @@
+{
+  "io_mapping": {
+    "inputs": {
+      "FLOW-LPM": {
+        "card_number": 0,
+        "hw_pin": "AI0"
+      },
+      "SAFETY-CURTAIN": {
+        "card_number": 0,
+        "hw_pin": "DI7"
+      }
+    },
+    "outputs": {
+      "PP-LEFOO": {
+        "card_number": 0,
+        "hw_pin": "T0"
+      },
+      "VALVE-A": {
+        "card_number": 0,
+        "hw_pin": "R1"
+      }
+    }
+  },
+  "system": {
+    "io_cards": [],
+    "plc": {
+      "card_number": 0,
+      "device_id": "NORVI-AE01-R-01"
+    },
+    "telemetry_frequency_ms": 1000
+  }
+}
