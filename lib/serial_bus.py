@@ -2,11 +2,13 @@ import sys
 import ujson
 import uselect
 
+
 class SerialBusController:
     """
     Manages the serial bus communication (stdin/stdout) for sending
     JSON messages and receiving text-based commands.
     """
+
     def __init__(self):
         self.poll = uselect.poll()
         self.poll.register(sys.stdin, uselect.POLLIN)
@@ -16,10 +18,7 @@ class SerialBusController:
         Constructs a standard message and sends it over stdout as a
         JSON string on a single line.
         """
-        msg = {
-            "msg_type": msg_type,
-            "payload": payload
-        }
+        msg = {"msg_type": msg_type, "payload": payload}
         sys.stdout.write(ujson.dumps(msg) + "\n")
 
     def check_for_command(self):
@@ -32,9 +31,9 @@ class SerialBusController:
             line = sys.stdin.readline().strip()
             if not line:
                 return (None, None)
-                
-            parts = line.split(":")
+
+            parts = line.split(":", 2)
             if len(parts) == 3 and parts[0] == "CMD":
                 return (parts[1], parts[2])
-        
+
         return (None, None)

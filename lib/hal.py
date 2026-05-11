@@ -19,19 +19,29 @@ def register_driver(type_name, driver_class):
 # errors (e.g. when running tests on a PC).
 try:
     from lib.drivers.norvi_ae01_r import NorviAE01R
+
     register_driver("norvi_ae01_r", NorviAE01R)
 except ImportError:
     pass
 
 try:
     from lib.drivers.norvi_ae01_t import NorviAE01T
+
     register_driver("norvi_ae01_t", NorviAE01T)
 except ImportError:
     pass
 
 try:
     from lib.drivers.norvi_ex_q4 import NorviEX_Q4
+
     register_driver("norvi_ex_q4", NorviEX_Q4)
+except ImportError:
+    pass
+
+try:
+    from lib.drivers.norvi_ex_anq_04 import NorviEX_ANQ04
+
+    register_driver("norvi_ex_anq_04", NorviEX_ANQ04)
 except ImportError:
     pass
 
@@ -39,6 +49,7 @@ except ImportError:
 # ---------------------------------------------------------------------------
 # HAL -- Hardware Abstraction Layer
 # ---------------------------------------------------------------------------
+
 
 class HAL:
     """
@@ -73,9 +84,9 @@ class HAL:
     _I2C_SCL_PIN = 17
 
     def __init__(self, config):
-        self._modules = {}           # card_number -> driver instance
-        self._logical_to_card = {}   # logical_name -> (card_number, hw_pin)
-        self._outputs = {}           # logical_name -> (card_number, hw_pin)
+        self._modules = {}  # card_number -> driver instance
+        self._logical_to_card = {}  # logical_name -> (card_number, hw_pin)
+        self._outputs = {}  # logical_name -> (card_number, hw_pin)
         self.i2c_bus = None
 
         system_cfg = config.get("system", {})
@@ -100,6 +111,7 @@ class HAL:
             card_type = card_cfg.get("type", "")
             address = int(card_cfg.get("i2c_address", 0))
             label = card_cfg.get("label", "")
+            extra_cfg = card_cfg.get("config", {}) or {}
 
             driver_class = _DRIVER_REGISTRY.get(card_type)
             if driver_class is None:
@@ -107,12 +119,18 @@ class HAL:
                 continue
 
             try:
-                self._modules[card_num] = driver_class(self.i2c_bus, address)
-                print("HAL: Expansion card %d -> %s at I2C 0x%02X %s" % (
-                    card_num, card_type, address, label))
+                self._modules[card_num] = driver_class(
+                    self.i2c_bus, address, config=extra_cfg
+                )
+                print(
+                    "HAL: Expansion card %d -> %s at I2C 0x%02X %s"
+                    % (card_num, card_type, address, label)
+                )
             except OSError as exc:
-                print("HAL: ERROR -- I2C device at 0x%02X not responding: %s" % (
-                    address, exc))
+                print(
+                    "HAL: ERROR -- I2C device at 0x%02X not responding: %s"
+                    % (address, exc)
+                )
 
         # -- 3. Build logical-name mappings from io_mapping --
         io_mapping = config.get("io_mapping", {})
@@ -127,8 +145,10 @@ class HAL:
         scl = Pin(self._I2C_SCL_PIN)
         sda = Pin(self._I2C_SDA_PIN)
         self.i2c_bus = I2C(1, scl=scl, sda=sda, freq=400000)
-        print("HAL: I2C bus initialized on SCL=%d, SDA=%d" % (
-            self._I2C_SCL_PIN, self._I2C_SDA_PIN))
+        print(
+            "HAL: I2C bus initialized on SCL=%d, SDA=%d"
+            % (self._I2C_SCL_PIN, self._I2C_SDA_PIN)
+        )
 
     def _build_mappings(self, io_mapping):
         """
@@ -150,38 +170,51 @@ class HAL:
                     continue
 
                 if card_num not in self._modules:
-                    print("HAL: WARNING -- card %d not found for '%s'" % (
-                        card_num, logical_name))
+                    print(
+                        "HAL: WARNING -- card %d not found for '%s'"
+                        % (card_num, logical_name)
+                    )
                     continue
 
                 module = self._modules[card_num]
                 if hw_pin not in module.AVAILABLE_PINS:
-                    print("HAL: WARNING -- hw_pin '%s' not on card %d for '%s'" % (
-                        hw_pin, card_num, logical_name))
+                    print(
+                        "HAL: WARNING -- hw_pin '%s' not on card %d for '%s'"
+                        % (hw_pin, card_num, logical_name)
+                    )
                     continue
 
                 self._logical_to_card[logical_name] = (card_num, hw_pin)
-                if module.AVAILABLE_PINS[hw_pin]["type"] == "output":
+                if module.AVAILABLE_PINS[hw_pin]["type"] in ("output", "analog_output"):
                     self._outputs[logical_name] = (card_num, hw_pin)
 
         print("HAL: mapped outputs ->", list(self._outputs.keys()))
-        print("HAL: mapped inputs  ->", [
-            n for n in self._logical_to_card if n not in self._outputs])
+        print(
+            "HAL: mapped inputs  ->",
+            [n for n in self._logical_to_card if n not in self._outputs],
+        )
 
     # -----------------------------------------------------------------
     # Public API (same interface the old monolithic class exposed)
     # -----------------------------------------------------------------
 
     def set_output(self, logical_name, value_str):
-        """
-        Set a logical output to ON or OFF.
-        Returns True on success, False if the name is unknown.
-        """
         if logical_name not in self._outputs:
             return False
         card_num, hw_pin = self._outputs[logical_name]
-        value = 1 if value_str.upper() == "ON" else 0
-        return self._modules[card_num].set_pin_value(hw_pin, value)
+        module = self._modules[card_num]
+        pin_type = module.AVAILABLE_PINS[hw_pin]["type"]
+
+        if pin_type == "output":  # digital
+            value = 1 if value_str.upper() == "ON" else 0
+        elif pin_type == "analog_output":  # new
+            try:
+                value = float(value_str)
+            except ValueError:
+                return False
+        else:
+            return False
+        return module.set_pin_value(hw_pin, value)
 
     def get_all_states(self):
         """
@@ -258,8 +291,8 @@ if __name__ == "__main__" or __name__ == "lib.hal":
         # -- 3. Read MCP23008 registers --
         print("\n[3] Reading MCP23008 registers at 0x%02X..." % target_addr)
         REG_IODIR = 0x00
-        REG_GPIO  = 0x09
-        REG_OLAT  = 0x0A
+        REG_GPIO = 0x09
+        REG_OLAT = 0x0A
 
         def read_reg(reg):
             i2c.writeto(target_addr, bytes([reg]))
@@ -269,8 +302,8 @@ if __name__ == "__main__" or __name__ == "lib.hal":
             i2c.writeto(target_addr, bytes([reg, val]))
 
         iodir = read_reg(REG_IODIR)
-        gpio  = read_reg(REG_GPIO)
-        olat  = read_reg(REG_OLAT)
+        gpio = read_reg(REG_GPIO)
+        olat = read_reg(REG_OLAT)
         print("    IODIR = 0x%02X  (expect 0xF0: bits 0-3 output, 4-7 input)" % iodir)
         print("    GPIO  = 0x%02X" % gpio)
         print("    OLAT  = 0x%02X" % olat)
@@ -283,18 +316,19 @@ if __name__ == "__main__" or __name__ == "lib.hal":
 
         print("\n[5] Toggling outputs one by one...")
         import utime
+
         pin_map = {"Q1": 3, "Q2": 2, "Q3": 1, "Q4": 0}
         for name, bit in pin_map.items():
             val = 1 << bit
-            print("    %s (GP%d, bit %d) -> ON  (GPIO=0x%02X)" % (
-                name, bit, bit, val))
+            print("    %s (GP%d, bit %d) -> ON  (GPIO=0x%02X)" % (name, bit, bit, val))
             write_reg(REG_GPIO, val)
             utime.sleep_ms(500)
 
             readback = read_reg(REG_GPIO)
-            print("    %s readback GPIO = 0x%02X  %s" % (
-                name, readback,
-                "OK" if (readback & val) else "FAIL - bit not set!"))
+            print(
+                "    %s readback GPIO = 0x%02X  %s"
+                % (name, readback, "OK" if (readback & val) else "FAIL - bit not set!")
+            )
 
             write_reg(REG_GPIO, 0x00)
             utime.sleep_ms(200)
@@ -303,8 +337,10 @@ if __name__ == "__main__" or __name__ == "lib.hal":
         print("\n[6] All outputs ON (GPIO=0x0F)...")
         write_reg(REG_GPIO, 0x0F)
         readback = read_reg(REG_GPIO)
-        print("    Readback = 0x%02X  %s" % (
-            readback, "OK" if readback & 0x0F == 0x0F else "FAIL"))
+        print(
+            "    Readback = 0x%02X  %s"
+            % (readback, "OK" if readback & 0x0F == 0x0F else "FAIL")
+        )
         utime.sleep_ms(1000)
 
         print("    All outputs OFF...")
@@ -316,6 +352,7 @@ if __name__ == "__main__" or __name__ == "lib.hal":
         print("\n[7] Testing via NorviEX_Q4 driver class...")
         try:
             from lib.drivers.norvi_ex_q4 import NorviEX_Q4
+
             module = NorviEX_Q4(i2c, target_addr)
             print("    Driver instantiated OK")
 
@@ -323,8 +360,10 @@ if __name__ == "__main__" or __name__ == "lib.hal":
             for pin_name in ("Q1", "Q2", "Q3", "Q4"):
                 module.set_pin_value(pin_name, 1)
                 state = module.get_pin_value(pin_name)
-                print("    %s -> ON, readback=%d  %s" % (
-                    pin_name, state, "OK" if state == 1 else "FAIL"))
+                print(
+                    "    %s -> ON, readback=%d  %s"
+                    % (pin_name, state, "OK" if state == 1 else "FAIL")
+                )
                 utime.sleep_ms(5000)
                 module.set_pin_value(pin_name, 0)
 

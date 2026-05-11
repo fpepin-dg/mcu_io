@@ -14,14 +14,14 @@ class NorviEX_Q4(IOModuleBase):
     DIP switch address table (active-low: ON grounds the pin = 0,
     OFF leaves it pulled high = 1; switch 4 is unused):
       A0(sw1) A1(sw2) A2(sw3) -> Address  Decimal
-      ON      ON      ON      -> 0x20     32
-      OFF     ON      ON      -> 0x21     33
-      ON      OFF     ON      -> 0x22     34
-      OFF     OFF     ON      -> 0x23     35
-      ON      ON      OFF     -> 0x24     36
-      OFF     ON      OFF     -> 0x25     37
-      ON      OFF     OFF     -> 0x26     38
-      OFF     OFF     OFF     -> 0x27     39
+      OFF     OFF     OFF     -> 0x20     32
+      ON      OFF     OFF     -> 0x21     33
+      OFF     ON      OFF     -> 0x22     34
+      ON      ON      OFF     -> 0x23     35
+      OFF     OFF     ON      -> 0x24     36
+      ON      OFF     ON      -> 0x25     37
+      OFF     ON      ON      -> 0x26     38
+      ON      ON      ON      -> 0x27     39
 
     Use the decimal value in config.json "i2c_address" field.
 
@@ -42,8 +42,8 @@ class NorviEX_Q4(IOModuleBase):
 
     # MCP23008 register addresses
     _REG_IODIR = 0x00
-    _REG_GPIO  = 0x09
-    _REG_OLAT  = 0x0A
+    _REG_GPIO = 0x09
+    _REG_OLAT = 0x0A
 
     AVAILABLE_PINS = {
         "Q1": {"type": "output"},
@@ -54,28 +54,30 @@ class NorviEX_Q4(IOModuleBase):
 
     # Maps terminal label -> MCP23008 GPIO bit index
     _PIN_INDEX = {
-        "Q1": 3,   # GP3
-        "Q2": 2,   # GP2
-        "Q3": 1,   # GP1
-        "Q4": 0,   # GP0
+        "Q1": 7,  # GP7
+        "Q2": 6,  # GP6
+        "Q3": 5,  # GP5
+        "Q4": 4,  # GP4
     }
 
     # Bitmask covering only the 4 wired outputs (bits 0-3)
-    _OUTPUT_MASK = 0x0F
+    _OUTPUT_MASK = 0xF0
 
-    def __init__(self, i2c, address):
+    def __init__(self, i2c, address, config=None):
         """
         Args:
             i2c:     An initialized machine.I2C bus instance.
             address: The 7-bit I2C address of this MCP23008 (0x20-0x27).
+            config:  Optional configuration dictionary.
         """
         self.i2c = i2c
         self.address = address
+        self.config = config or {}
         self._output_state = 0x00  # Track output latch locally
 
         # Bits 0-3 = outputs (0), bits 4-7 = inputs (1)
         # IODIR: 0 = output, 1 = input  ->  0xF0
-        self._write_register(self._REG_IODIR, 0xF0)
+        self._write_register(self._REG_IODIR, 0x0F)
         # All outputs OFF
         self._write_register(self._REG_GPIO, 0x00)
 
@@ -100,17 +102,13 @@ class NorviEX_Q4(IOModuleBase):
     def set_pin_value(self, hw_pin, value):
         idx = self._PIN_INDEX[hw_pin]
         if value:
-            self._output_state |= (1 << idx)
+            self._output_state |= 1 << idx
         else:
             self._output_state &= ~(1 << idx)
         # Only touch bits 0-3
-        self._write_register(self._REG_GPIO,
-                             self._output_state & self._OUTPUT_MASK)
+        self._write_register(self._REG_GPIO, self._output_state & self._OUTPUT_MASK)
         return True
 
     def get_all_states(self):
         gpio_val = self._read_register(self._REG_GPIO)
-        return {
-            name: (gpio_val >> idx) & 1
-            for name, idx in self._PIN_INDEX.items()
-        }
+        return {name: (gpio_val >> idx) & 1 for name, idx in self._PIN_INDEX.items()}

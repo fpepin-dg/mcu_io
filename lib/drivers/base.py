@@ -29,3 +29,19 @@ class IOModuleBase:
         AVAILABLE_PINS.
         """
         raise NotImplementedError
+
+
+class AnalogOutputModuleBase(IOModuleBase):
+    """
+    Base class for analog-output expansion modules.
+
+    Channel values are integers (e.g. 0..4095 for 12-bit DACs) instead
+    of binary 0/1. Subclasses define DAC_RESOLUTION_BITS and the value
+    range expected by set_pin_value/get_pin_value.
+    """
+
+    DAC_RESOLUTION_BITS = 12
+
+    def get_status(self):
+        """Return a dict describing fault/diagnostic flags."""
+        raise NotImplementedError

@@ -15,25 +15,41 @@ class NorviAE01T(IOModuleBase):
     """
 
     AVAILABLE_PINS = {
-        "DI0": {"type": "input"},  "DI1": {"type": "input"},
-        "DI2": {"type": "input"},  "DI3": {"type": "input"},
-        "DI4": {"type": "input"},  "DI5": {"type": "input"},
-        "DI6": {"type": "input"},  "DI7": {"type": "input"},
-        "T0":  {"type": "output"}, "T1":  {"type": "output"},
-        "T2":  {"type": "output"}, "T3":  {"type": "output"},
-        "T4":  {"type": "output"}, "T5":  {"type": "output"},
-        "T6":  {"type": "output"}, "T7":  {"type": "output"},
+        "DI0": {"type": "input"},
+        "DI1": {"type": "input"},
+        "DI2": {"type": "input"},
+        "DI3": {"type": "input"},
+        "DI4": {"type": "input"},
+        "DI5": {"type": "input"},
+        "DI6": {"type": "input"},
+        "DI7": {"type": "input"},
+        "T0": {"type": "output"},
+        "T1": {"type": "output"},
+        "T2": {"type": "output"},
+        "T3": {"type": "output"},
+        "T4": {"type": "output"},
+        "T5": {"type": "output"},
+        "T6": {"type": "output"},
+        "T7": {"type": "output"},
     }
 
     _PIN_MAP = {
-        "DI0": Pin(18, Pin.IN),  "DI1": Pin(39, Pin.IN),
-        "DI2": Pin(34, Pin.IN),  "DI3": Pin(35, Pin.IN),
-        "DI4": Pin(19, Pin.IN),  "DI5": Pin(21, Pin.IN),
-        "DI6": Pin(22, Pin.IN),  "DI7": Pin(23, Pin.IN),
-        "T0":  Pin(26, Pin.OUT), "T1":  Pin(27, Pin.OUT),
-        "T2":  Pin(14, Pin.OUT), "T3":  Pin(12, Pin.OUT),
-        "T4":  Pin(13, Pin.OUT), "T5":  Pin(15, Pin.OUT),
-        "T6":  Pin(2, Pin.OUT),  "T7":  Pin(33, Pin.OUT),
+        "DI0": Pin(18, Pin.IN),
+        "DI1": Pin(39, Pin.IN),
+        "DI2": Pin(34, Pin.IN),
+        "DI3": Pin(35, Pin.IN),
+        "DI4": Pin(19, Pin.IN),
+        "DI5": Pin(21, Pin.IN),
+        "DI6": Pin(22, Pin.IN),
+        "DI7": Pin(23, Pin.IN),
+        "T0": Pin(26, Pin.OUT),
+        "T1": Pin(27, Pin.OUT),
+        "T2": Pin(14, Pin.OUT),
+        "T3": Pin(12, Pin.OUT),
+        "T4": Pin(13, Pin.OUT),
+        "T5": Pin(15, Pin.OUT),
+        "T6": Pin(2, Pin.OUT),
+        "T7": Pin(33, Pin.OUT),
     }
 
     # Peripheral pin numbers
@@ -75,8 +91,9 @@ class NorviAE01T(IOModuleBase):
     def init_rs485(self, baudrate=9600, uart_id=1):
         self.rs485_fc_pin = Pin(self.RS485_FC_PIN, Pin.OUT)
         self.rs485_fc_pin.value(0)  # Default to RX mode
-        self.rs485_bus = UART(uart_id, baudrate=baudrate,
-                              tx=self.RS485_TX_PIN, rx=self.RS485_RX_PIN)
+        self.rs485_bus = UART(
+            uart_id, baudrate=baudrate, tx=self.RS485_TX_PIN, rx=self.RS485_RX_PIN
+        )
         return self.rs485_bus, self.rs485_fc_pin
 
     def read_buttons(self):
