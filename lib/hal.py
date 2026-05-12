@@ -45,6 +45,13 @@ try:
 except ImportError:
     pass
 
+# try:
+#     from lib.drivers.norvi_ex_anv_01 import NorviEX_ANV01
+
+#     register_driver("norvi_ex_anv_01", NorviEX_ANV01)
+# except ImportError:
+#     pass
+
 
 # ---------------------------------------------------------------------------
 # HAL -- Hardware Abstraction Layer
@@ -208,10 +215,7 @@ class HAL:
         if pin_type == "output":  # digital
             value = 1 if value_str.upper() == "ON" else 0
         elif pin_type == "analog_output":  # new
-            try:
-                value = float(value_str)
-            except ValueError:
-                return False
+            value = value_str
         else:
             return False
         return module.set_pin_value(hw_pin, value)

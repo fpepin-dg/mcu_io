@@ -118,6 +118,23 @@ class NorviEX_ANQ04(IOModuleBase):
             raise ValueError("DIP value must be 0x00..0x0F")
         return cls.I2C_ADDR_BASE | dip_value
 
+    INVERT_DIP_LOW_NIBBLE = True
+
+    @classmethod
+    def _resolve_address(cls, label_address):
+        """
+        Convert the DIP-label address (what's written on the board) into the
+        real I2C address used for transactions.
+
+        Accepts the full 7-bit address (e.g. 0x50..0x5F). Only the low nibble
+        is inverted; the upper nibble is preserved verbatim so the helper
+        stays a no-op for callers passing an already-resolved address with
+        INVERT_DIP_LOW_NIBBLE set to False.
+        """
+        if not cls.INVERT_DIP_LOW_NIBBLE:
+            return label_address
+        return (label_address & 0xF0) | (~label_address & cls.I2C_ADDR_MASK)
+
     # -------------------- Construction --------------------
 
     def __init__(self, i2c, address, config=None):
@@ -129,7 +146,7 @@ class NorviEX_ANQ04(IOModuleBase):
                      Missing keys default to '0' (voltage mode).
         """
         self.i2c = i2c
-        self.address = address
+        self.address = self._resolve_address(address)
         config = config or {}
 
         # Per-pin mode (0 = voltage, 1 = current). Defaults to voltage.
