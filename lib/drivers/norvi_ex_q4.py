@@ -62,22 +62,14 @@ class NorviEX_Q4(IOModuleBase):
         "Q4": 4,  # GP4
     }
 
-    INVERT_DIP_LOW_NIBBLE = True
+    INVERT_DIP_LOW_NIBBLE = False
 
     @classmethod
     def _resolve_address(cls, label_address):
-        """
-        Convert the DIP-label address (what's written on the board) into the
-        real I2C address used for transactions.
-
-        Accepts the full 7-bit address (e.g. 0x50..0x5F). Only the low nibble
-        is inverted; the upper nibble is preserved verbatim so the helper
-        stays a no-op for callers passing an already-resolved address with
-        INVERT_DIP_LOW_NIBBLE set to False.
-        """
         if not cls.INVERT_DIP_LOW_NIBBLE:
             return label_address
-        return (label_address & 0x20) | (~label_address & cls.I2C_ADDR_MASK)
+        upper_mask = (~cls.I2C_ADDR_MASK) & 0xFF  # everything *not* set by DIPs
+        return (label_address & upper_mask) | (~label_address & cls.I2C_ADDR_MASK)
 
     # Bitmask covering only the 4 wired outputs (bits 0-3)
     _OUTPUT_MASK = 0xF0
