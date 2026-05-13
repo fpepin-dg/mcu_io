@@ -97,7 +97,7 @@ class NorviEX_ANV01(IOModuleBase):
     _CHAN_INDEX = {"A0": 0, "A1": 1, "A2": 2, "A3": 3}
 
     # 3.3 k / 2.2 k divider on the front end -> V_adc = 0.4 * V_term
-    _DIVIDER_RATIO = 2.2 / (3.3 + 2.2)  # = 0.4
+    _DIVIDER_RATIO = 0.311
 
     # -------------------- Construction --------------------
 
@@ -173,16 +173,18 @@ class NorviEX_ANV01(IOModuleBase):
     # -------------------- IOModuleBase interface --------------------
 
     def get_pin_value(self, hw_pin):
-        """Return the latest raw signed 16-bit ADC code for this channel.
+        """Return the latest *terminal voltage* (volts, 0..10 V) for this channel.
 
-        Triggers a fresh conversion. Returned value is what gets written to
-        the bus payload by HAL.get_all_states().
+        Triggers a fresh conversion. The HAL bus payload now carries volts,
+        not raw codes, so downstream consumers (websocket, UI) get physical units.
         """
         if hw_pin not in self._CHAN_INDEX:
             raise KeyError(hw_pin)
         raw = self._convert_channel(self._CHAN_INDEX[hw_pin])
         self._last_raw[hw_pin] = raw
-        return raw
+        v_adc = raw * self._fsr_volts / 32767.0
+        v_term = v_adc / self._DIVIDER_RATIO
+        return v_term
 
     def set_pin_value(self, hw_pin, value):
         """ANV01 channels are read-only."""

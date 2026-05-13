@@ -151,7 +151,7 @@ class HAL:
         """Initialize the shared I2C bus used by all expansion modules."""
         scl = Pin(self._I2C_SCL_PIN)
         sda = Pin(self._I2C_SDA_PIN)
-        self.i2c_bus = I2C(1, scl=scl, sda=sda, freq=400000)
+        self.i2c_bus = I2C(1, scl=scl, sda=sda, freq=100000)
         print(
             "HAL: I2C bus initialized on SCL=%d, SDA=%d"
             % (self._I2C_SCL_PIN, self._I2C_SDA_PIN)
@@ -261,7 +261,7 @@ if __name__ == "__main__" or __name__ == "lib.hal":
         # -- 1. I2C bus scan --
         print("\n[1] I2C bus scan (SCL=17, SDA=16)...")
         try:
-            i2c = I2C(1, scl=Pin(17), sda=Pin(16), freq=400000)
+            i2c = I2C(1, scl=Pin(17), sda=Pin(16), freq=100000)
             devices = i2c.scan()
             if devices:
                 print("    Found %d device(s):" % len(devices))

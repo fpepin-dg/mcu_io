@@ -82,7 +82,7 @@ class NorviAE01T(IOModuleBase):
 
     # -- Peripheral helpers (optional, used by HAL if needed) --
 
-    def init_i2c(self, freq=400000):
+    def init_i2c(self, freq=100000):
         scl = Pin(self.I2C_SCL_PIN)
         sda = Pin(self.I2C_SDA_PIN)
         self.i2c_bus = I2C(1, scl=scl, sda=sda, freq=freq)

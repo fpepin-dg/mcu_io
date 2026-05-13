@@ -7,7 +7,7 @@ from lib.hal import HAL
 def load_config(path="config.json"):
     """Loads configuration from a JSON file."""
     try:
-        with open(path, 'r') as f:
+        with open(path, "r") as f:
             return ujson.load(f)
     except (OSError, ValueError):
         print("Warning: %s not found or corrupt. Using defaults." % path)
@@ -21,7 +21,7 @@ def load_config(path="config.json"):
                 },
                 "telemetry_frequency_ms": 1000,
             },
-            "io_mapping": {"inputs": {}, "outputs": {}}
+            "io_mapping": {"inputs": {}, "outputs": {}},
         }
 
 
@@ -47,22 +47,38 @@ bus = SerialBusController()
 last_telemetry_tick = time.ticks_ms()
 print("Entering main loop...")
 while True:
-    now = time.ticks_ms()
-    
-    # 1. Periodically send telemetry
-    if time.ticks_diff(now, last_telemetry_tick) >= telemetry_freq_ms:
-        current_states = hal.get_all_states()
-        bus.send_message(msg_type="ED", payload=current_states)
-        last_telemetry_tick = now
+    try:
+        now = time.ticks_ms()
 
-    # 2. Check for incoming commands
-    command, value = bus.check_for_command()
-    if command:
-        print("Received command: '%s' -> '%s'" % (command, value))
+        # 1. Periodically send telemetry
+        if time.ticks_diff(now, last_telemetry_tick) >= telemetry_freq_ms:
+            try:
+                current_states = hal.get_all_states()
+                bus.send_message(msg_type="ED", payload=current_states)
+            except OSError as exc:
+                # I2C glitch on a single telemetry cycle — log & keep running.
+                print("WARN: telemetry I/O error, skipping cycle:", exc)
+            last_telemetry_tick = now
 
-        # The HAL routes the command to the correct driver (local or expansion)
-        if not hal.set_output(command, value):
-            print("Warning: Unknown command/component '%s'." % command)
-            bus.send_message(msg_type="CMD_ERROR", payload={"command": command})
+        # 2. Check for incoming commands
+        command, value = bus.check_for_command()
+        if command:
+            print("Received command: '%s' -> '%s'" % (command, value))
+            try:
+                ok = hal.set_output(command, value)
+            except OSError as exc:
+                print("WARN: command I/O error:", exc)
+                ok = False
+            if not ok:
+                print("Warning: Unknown command/component '%s'." % command)
+                bus.send_message(msg_type="CMD_ERROR", payload={"command": command})
 
-    time.sleep_ms(10)
+        time.sleep_ms(10)
+
+    except Exception as exc:
+        # Last-resort guard: never let the main loop die. Print and keep going.
+        import sys
+
+        print("ERROR in main loop:", exc)
+        sys.print_exception(exc)
+        time.sleep_ms(100)
