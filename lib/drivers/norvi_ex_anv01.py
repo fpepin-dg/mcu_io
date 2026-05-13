@@ -1,4 +1,5 @@
 from lib.drivers.base import IOModuleBase
+import utime
 
 
 class NorviEX_ANV01(IOModuleBase):
@@ -156,12 +157,16 @@ class NorviEX_ANV01(IOModuleBase):
         )
         self._write_register(self._REG_CONFIG, cfg)
 
-        # Poll OS bit until the conversion completes (bit15 goes back to 1).
-        # ADS1115 worst case is ~125 ms at 8 SPS, ~1.2 ms at 860 SPS.
+        # Give the ADS1115 time to actually start the conversion before we poll.
+        utime.sleep_ms(2)
+
+        # Poll OS bit until conversion completes, with a small gap between
+        # transactions so we don't hammer the chip while it's still busy.
         for _ in range(200):
             status = self._read_register(self._REG_CONFIG)
             if status & 0x8000:
                 break
+            utime.sleep_ms(1)
 
         return self._to_signed16(self._read_register(self._REG_CONVERSION))
 
