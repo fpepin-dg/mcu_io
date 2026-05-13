@@ -98,11 +98,9 @@ class NorviEX_ANV01(IOModuleBase):
     # 3.3 k / 2.2 k divider on the front end -> V_adc = 0.4 * V_term
     _DIVIDER_RATIO = 2.2 / (3.3 + 2.2)  # = 0.4
 
-    _VALID_ADDRESSES = (0x48, 0x49, 0x4A, 0x4B)
-
     # -------------------- Construction --------------------
 
-    def __init__(self, i2c, address=0x48, config=None):
+    def __init__(self, i2c, address, config=None):
         """
         Args:
             i2c:     An initialized machine.I2C bus.
@@ -111,12 +109,8 @@ class NorviEX_ANV01(IOModuleBase):
                        'gain'      : '2/3' (default), '1', '2', '4', '8', '16'
                        'data_rate' : 8/16/32/64/128/250/475/860 (default 128)
         """
-        if int(address) not in self._VALID_ADDRESSES:
-            raise ValueError(
-                "ANV01: invalid I2C address 0x%02X (expected 0x48..0x4B)" % int(address)
-            )
         self.i2c = i2c
-        self.address = int(address)
+        self.address = address
 
         cfg = config or {}
         gain_key = str(cfg.get("gain", "2/3"))
