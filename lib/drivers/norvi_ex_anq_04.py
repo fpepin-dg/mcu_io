@@ -118,7 +118,7 @@ class NorviEX_ANQ04(IOModuleBase):
             raise ValueError("DIP value must be 0x00..0x0F")
         return cls.I2C_ADDR_BASE | dip_value
 
-    INVERT_DIP_LOW_NIBBLE = True
+    INVERT_DIP_LOW_NIBBLE = False
 
     @classmethod
     def _resolve_address(cls, label_address):
