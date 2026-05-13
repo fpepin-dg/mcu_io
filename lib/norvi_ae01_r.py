@@ -118,7 +118,7 @@ class NorviIIOT_AE01_R:
 
     # --- 2. METHODS FOR DIRECT HARDWARE ACCESS ---
 
-    def init_i2c(self, freq=400000):
+    def init_i2c(self, freq=100000):
         """
         Initializes the I2C bus for the OLED display and returns the I2C object.
         """
