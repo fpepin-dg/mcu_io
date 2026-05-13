@@ -45,12 +45,12 @@ try:
 except ImportError:
     pass
 
-# try:
-#     from lib.drivers.norvi_ex_anv_01 import NorviEX_ANV01
+try:
+    from lib.drivers.norvi_ex_anv01 import NorviEX_ANV01
 
-#     register_driver("norvi_ex_anv_01", NorviEX_ANV01)
-# except ImportError:
-#     pass
+    register_driver("norvi_ex_anv01", NorviEX_ANV01)
+except ImportError:
+    pass
 
 
 # ---------------------------------------------------------------------------
