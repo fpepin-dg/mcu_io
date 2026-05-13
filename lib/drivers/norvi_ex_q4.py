@@ -45,6 +45,8 @@ class NorviEX_Q4(IOModuleBase):
     _REG_GPIO = 0x09
     _REG_OLAT = 0x0A
 
+    I2C_ADDR_MASK = 0x07
+
     AVAILABLE_PINS = {
         "Q1": {"type": "output"},
         "Q2": {"type": "output"},
@@ -60,6 +62,21 @@ class NorviEX_Q4(IOModuleBase):
         "Q4": 4,  # GP4
     }
 
+    @classmethod
+    def _resolve_address(cls, label_address):
+        """
+        Convert the DIP-label address (what's written on the board) into the
+        real I2C address used for transactions.
+
+        Accepts the full 7-bit address (e.g. 0x50..0x5F). Only the low nibble
+        is inverted; the upper nibble is preserved verbatim so the helper
+        stays a no-op for callers passing an already-resolved address with
+        INVERT_DIP_LOW_NIBBLE set to False.
+        """
+        if not cls.INVERT_DIP_LOW_NIBBLE:
+            return label_address
+        return (label_address & 0x20) | (~label_address & cls.I2C_ADDR_MASK)
+
     # Bitmask covering only the 4 wired outputs (bits 0-3)
     _OUTPUT_MASK = 0xF0
 
@@ -71,7 +88,7 @@ class NorviEX_Q4(IOModuleBase):
             config:  Optional configuration dictionary.
         """
         self.i2c = i2c
-        self.address = address
+        self.address = self._resolve_address(address)
         self.config = config or {}
         self._output_state = 0x00  # Track output latch locally
 
