@@ -62,6 +62,8 @@ class NorviEX_Q4(IOModuleBase):
         "Q4": 4,  # GP4
     }
 
+    INVERT_DIP_LOW_NIBBLE = True
+
     @classmethod
     def _resolve_address(cls, label_address):
         """
