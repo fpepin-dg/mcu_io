@@ -44,7 +44,18 @@ hal = HAL(config)
 bus = SerialBusController()
 
 # --- Main Application Loop ---
+# After this many consecutive I/O errors we assume the I2C bus is hung
+# (a slave is stretching SCL or holding SDA low) and try to recover it.
+# A single isolated glitch usually clears on its own, so we don't recover
+# on the very first error.
+RECOVERY_ERROR_THRESHOLD = 2
+# Don't try to recover more often than this; gives the bus time to settle
+# and avoids spamming the unstick procedure if recovery itself can't help.
+RECOVERY_BACKOFF_MS = 1000
+
 last_telemetry_tick = time.ticks_ms()
+last_recovery_tick = time.ticks_ms()
+consecutive_io_errors = 0
 print("Entering main loop...")
 while True:
     try:
@@ -55,9 +66,22 @@ while True:
             try:
                 current_states = hal.get_all_states()
                 bus.send_message(msg_type="ED", payload=current_states)
+                consecutive_io_errors = 0
             except OSError as exc:
-                # I2C glitch on a single telemetry cycle — log & keep running.
+                consecutive_io_errors += 1
                 print("WARN: telemetry I/O error, skipping cycle:", exc)
+                # Persistent OSErrors -> bus is almost certainly hung.
+                # Try to free SCL/SDA and re-init the peripheral.
+                if (
+                    consecutive_io_errors >= RECOVERY_ERROR_THRESHOLD
+                    and time.ticks_diff(now, last_recovery_tick)
+                    >= RECOVERY_BACKOFF_MS
+                ):
+                    try:
+                        hal.recover_i2c()
+                    except Exception as rexc:
+                        print("WARN: I2C recovery failed:", rexc)
+                    last_recovery_tick = time.ticks_ms()
             last_telemetry_tick = now
 
         # 2. Check for incoming commands
@@ -66,7 +90,9 @@ while True:
             print("Received command: '%s' -> '%s'" % (command, value))
             try:
                 ok = hal.set_output(command, value)
+                consecutive_io_errors = 0
             except OSError as exc:
+                consecutive_io_errors += 1
                 print("WARN: command I/O error:", exc)
                 ok = False
             if not ok:

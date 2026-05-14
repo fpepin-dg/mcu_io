@@ -1,3 +1,5 @@
+import utime as time
+
 from machine import I2C, Pin  # type: ignore
 
 # ---------------------------------------------------------------------------
@@ -112,32 +114,13 @@ class HAL:
         # -- 2. Instantiate expansion modules (cards 1..N) --
         if io_cards:
             self._init_i2c()
+            # Some I2C slaves are backed by an onboard MCU (e.g. the
+            # ANQ-04's STM32F103) that takes a few hundred ms to boot.
+            # Wait once before probing so we don't race their startup.
+            time.sleep_ms(500)
 
         for card_cfg in io_cards:
-            card_num = int(card_cfg.get("card_number", 0))
-            card_type = card_cfg.get("type", "")
-            address = int(card_cfg.get("i2c_address", 0))
-            label = card_cfg.get("label", "")
-            extra_cfg = card_cfg.get("config", {}) or {}
-
-            driver_class = _DRIVER_REGISTRY.get(card_type)
-            if driver_class is None:
-                print("HAL: WARNING -- unknown expansion type:", card_type)
-                continue
-
-            try:
-                self._modules[card_num] = driver_class(
-                    self.i2c_bus, address, config=extra_cfg
-                )
-                print(
-                    "HAL: Expansion card %d -> %s at I2C 0x%02X %s"
-                    % (card_num, card_type, address, label)
-                )
-            except OSError as exc:
-                print(
-                    "HAL: ERROR -- I2C device at 0x%02X not responding: %s"
-                    % (address, exc)
-                )
+            self._init_module(card_cfg)
 
         # -- 3. Build logical-name mappings from io_mapping --
         io_mapping = config.get("io_mapping", {})
@@ -147,8 +130,43 @@ class HAL:
     # Private helpers
     # -----------------------------------------------------------------
 
+    def _unstick_bus(self):
+        """Bit-bang up to 9 SCL pulses with SDA released, then a STOP.
+
+        Frees any I2C slave that was left mid-transaction. The most
+        common trigger for this is a soft reboot of the ESP32 (e.g.
+        via `mpremote` deploy) interrupting a write to an STM32-backed
+        slave such as the NORVI EX-ANQ-04: the STM32 is still expecting
+        the rest of a byte and clock-stretches forever until clocked.
+
+        Cheap (<1 ms), idempotent, and safe to run on a healthy bus.
+        """
+        try:
+            sda = Pin(self._I2C_SDA_PIN, Pin.OPEN_DRAIN, value=1)
+            scl = Pin(self._I2C_SCL_PIN, Pin.OPEN_DRAIN, value=1)
+            for _ in range(9):
+                scl.value(0)
+                time.sleep_us(5)
+                scl.value(1)
+                time.sleep_us(5)
+            # STOP condition: SDA low -> high while SCL high.
+            sda.value(0)
+            time.sleep_us(5)
+            scl.value(1)
+            time.sleep_us(5)
+            sda.value(1)
+            time.sleep_us(5)
+        except Exception as exc:
+            print("HAL: WARN bus unstick failed:", exc)
+
     def _init_i2c(self):
-        """Initialize the shared I2C bus used by all expansion modules."""
+        """Initialize the shared I2C bus used by all expansion modules.
+
+        Always preceded by an SCL-unstick so a slave that was left
+        mid-transaction by a previous master reset can finish its byte
+        and release the bus before we (re)create the I2C peripheral.
+        """
+        self._unstick_bus()
         scl = Pin(self._I2C_SCL_PIN)
         sda = Pin(self._I2C_SDA_PIN)
         self.i2c_bus = I2C(1, scl=scl, sda=sda, freq=100000)
@@ -156,6 +174,79 @@ class HAL:
             "HAL: I2C bus initialized on SCL=%d, SDA=%d"
             % (self._I2C_SCL_PIN, self._I2C_SDA_PIN)
         )
+
+    def _init_module(self, card_cfg, retries=3, retry_delay_ms=200):
+        """Instantiate a single expansion module, retrying on OSError.
+
+        Slaves backed by an onboard MCU (e.g. the ANQ-04's STM32F103) can
+        NAK the first few I2C transactions while their firmware is still
+        coming up. A few retries with a short backoff lets us start
+        reliably without panicking the user with spurious ENODEVs.
+        """
+        card_num = int(card_cfg.get("card_number", 0))
+        card_type = card_cfg.get("type", "")
+        address = int(card_cfg.get("i2c_address", 0))
+        label = card_cfg.get("label", "")
+        extra_cfg = card_cfg.get("config", {}) or {}
+
+        driver_class = _DRIVER_REGISTRY.get(card_type)
+        if driver_class is None:
+            print("HAL: WARNING -- unknown expansion type:", card_type)
+            return
+
+        last_exc = None
+        for attempt in range(retries):
+            if attempt > 0:
+                # The previous attempt may have left the slave mid-
+                # transaction (constructor writes that didn't complete
+                # cleanly). Bit-bang the bus free and let it settle
+                # before trying again.
+                self._unstick_bus()
+                time.sleep_ms(retry_delay_ms)
+
+            try:
+                self._modules[card_num] = driver_class(
+                    self.i2c_bus, address, config=extra_cfg
+                )
+                print(
+                    "HAL: Expansion card %d -> %s at I2C 0x%02X %s"
+                    % (card_num, card_type, address, label)
+                )
+                return
+            except OSError as exc:
+                last_exc = exc
+                if attempt + 1 < retries:
+                    print(
+                        "HAL: 0x%02X (%s) not ready (attempt %d/%d), retrying..."
+                        % (address, card_type, attempt + 1, retries)
+                    )
+
+        print(
+            "HAL: ERROR -- I2C device at 0x%02X not responding after %d attempts: %s"
+            % (address, retries, last_exc)
+        )
+
+    def recover_i2c(self):
+        """Attempt to recover a hung I2C bus.
+
+        ETIMEDOUT (errno 116) on ESP32 I2C means a slave is stretching
+        SCL forever or holding SDA low; the bus stays broken until it
+        is electrically freed. `_init_i2c()` already runs the SCL
+        unstick before recreating the peripheral, so all we need to do
+        here is re-init and propagate the new bus reference to every
+        driver that cached one in its constructor.
+
+        Safe to call repeatedly; a no-op if no expansion bus exists.
+        """
+        if self.i2c_bus is None:
+            return
+
+        print("HAL: recovering I2C bus...")
+        self._init_i2c()
+        for module in self._modules.values():
+            if hasattr(module, "i2c"):
+                module.i2c = self.i2c_bus
+        print("HAL: I2C bus recovered.")
 
     def _build_mappings(self, io_mapping):
         """
@@ -205,6 +296,12 @@ class HAL:
     # Public API (same interface the old monolithic class exposed)
     # -----------------------------------------------------------------
 
+    # Default retry budget for individual I/O operations. Picks up
+    # single-transaction NAKs (most commonly from STM32-backed slaves
+    # like the ANQ-04 that occasionally need a moment between writes).
+    _IO_RETRIES = 3
+    _IO_RETRY_DELAY_MS = 10
+
     def set_output(self, logical_name, value_str):
         if logical_name not in self._outputs:
             return False
@@ -218,16 +315,42 @@ class HAL:
             value = value_str
         else:
             return False
-        return module.set_pin_value(hw_pin, value)
+
+        # Retry on transient I2C glitches. A persistent failure still
+        # raises so the main loop can decide to run recover_i2c().
+        last_exc = None
+        for attempt in range(self._IO_RETRIES):
+            try:
+                return module.set_pin_value(hw_pin, value)
+            except OSError as exc:
+                last_exc = exc
+                if attempt + 1 < self._IO_RETRIES:
+                    time.sleep_ms(self._IO_RETRY_DELAY_MS)
+        raise last_exc
 
     def get_all_states(self):
         """
         Return a dict of {logical_name: value} for every mapped I/O point
         (inputs and outputs combined).
+
+        Each pin read gets a short retry budget so a single-transaction
+        NAK doesn't abort the whole telemetry cycle. Persistent read
+        failures still propagate so the main loop can recover the bus.
         """
         payload = {}
         for logical_name, (card_num, hw_pin) in self._logical_to_card.items():
-            payload[logical_name] = self._modules[card_num].get_pin_value(hw_pin)
+            module = self._modules[card_num]
+            last_exc = None
+            for attempt in range(self._IO_RETRIES):
+                try:
+                    payload[logical_name] = module.get_pin_value(hw_pin)
+                    break
+                except OSError as exc:
+                    last_exc = exc
+                    if attempt + 1 < self._IO_RETRIES:
+                        time.sleep_ms(self._IO_RETRY_DELAY_MS)
+            else:
+                raise last_exc
         return payload
 
     def get_module(self, card_number):
