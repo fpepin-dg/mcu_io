@@ -1,34 +1,71 @@
 from lib.constants import *
-from machine import Pin
 from lib.modules.umodbus.serial import ModbusRTU
-from lib.controller.display import DisplayController
 
 import time
 
 
 class ModbusController:
+
     def __init__(
         self,
-        registers: dict[str, dict[str, dict[str, int]]],
-        addr: int = 1,
-        baudrate: int = BAUDRATE,
-        tx: int = TX_PIN_NUMBER,
-        rx: int = RX_PIN_NUMBER,
-        ctrl_pin: int = FC_PIN_NUMBER,
-        uart_id: int = UART_ID,
-        bits: int = BITS,
-        parity: int = PARITY,
-        stop: int = STOP,
+        board,
+        io,
+        registers,
+        baudrate,
+        poll_interval_ms,
+        addr=1,
+        bits=BITS,
+        parity=PARITY,
+        stop=STOP,
+        callbacks=None,
     ):
+        self._board = board
+        self._io = io
+        rs = board.rs485
+        self._pins = (rs["tx"], rs["rx"])
+        self._ctrl_pin = rs["ctrl_pin"]
+        self._uart_id = rs["uart_id"]
         self._registers = registers
+        self._callbacks = callbacks or {}
         self._addr = addr
         self._baudrate = baudrate
-        self._pins = (Pin(tx), Pin(rx))
-        self._ctrl_pin = Pin(ctrl_pin)
-        self._uart_id = uart_id
         self._bits = bits
         self._parity = parity
         self._stop = stop
+        self._poll_interval_ms = poll_interval_ms
+
+        # map Modbus address -> (reg_type, "card:pin" key matching read_all output)
+        self._refresh_list = []
+        for rtype in ("COILS", "HREGS", "ISTS", "IREGS"):
+            for name, reg in registers.get(rtype, {}).items():
+                mb_addr = reg["register"]
+                m = io.mapping_for(mb_addr)  # {"pin":..,"card":..} or None
+                if m:
+                    key = "{}:{}".format(m["card"], m["pin"])
+                    self._refresh_list.append((rtype, mb_addr, key))
+
+    def _refresh(self):
+        snapshot = self._io.read_all()
+        for rtype, addr, key in self._refresh_list:
+            val = snapshot.get(key)
+            if val is None:
+                continue
+            try:
+                if rtype == "COILS":
+                    self._mb.set_coil(addr, bool(val))
+                elif rtype == "HREGS":
+                    self._mb.set_hreg(addr, val)
+                elif rtype == "ISTS":
+                    self._mb.set_ist(addr, bool(val))
+                else:
+                    self._mb.set_ireg(addr, val)
+            except Exception:
+                pass
+
+    def _attach_callbacks(self) -> None:
+        for reg_type, cbs in self._callbacks.items():
+            for name, reg in self._registers.get(reg_type, {}).items():
+                reg.update(cbs)
 
     def init(self) -> None:
         self._mb = ModbusRTU(
@@ -41,22 +78,29 @@ class ModbusController:
             ctrl_pin=self._ctrl_pin,
             uart_id=self._uart_id,
         )
-        self._mb.setup_registers(registers=self._registers)
-        print("Register setup done")
+        self._attach_callbacks()
+        try:
+            self._mb.setup_registers(registers=self._registers)
+        except Exception as e:
+            self._board.display.show_error(e)
 
     def deinit(self) -> None:
         self._mb._itf._uart.deinit()
 
-    def loop(self, oledController: DisplayController) -> None:
+    def loop(self, board):
+        last = time.ticks_ms()
         while True:
             try:
-                self._mb.process()
+                now = time.ticks_ms()
+                if time.ticks_diff(now, last) >= self._poll_interval_ms:
+                    self._refresh()
+                    last = now
+                self._mb.process()  # must stay responsive every loop
             except Exception as e:
-                oledController.show_text("LOOP_ERROR:" + str(e))
+                board.display.show_error(e)
                 time.sleep_ms(50)
                 continue
-
             if self._mb.get_coil(0) == MODE_UPLOAD:
-                time.sleep_ms(50)  # let the Modbus ack finish on the wire
+                time.sleep_ms(50)
                 self.deinit()
                 return

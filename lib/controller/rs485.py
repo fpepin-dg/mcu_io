@@ -1,6 +1,5 @@
-from machine import UART, Pin, reset
+from machine import UART, reset
 from lib.constants import *
-from lib.controller.display import DisplayController
 
 import time
 import os
@@ -9,41 +8,36 @@ import os
 class RS485Controller:
     def __init__(
         self,
-        uart_id=UART_ID,
-        baudrate=BAUDRATE,
+        board,
+        baudrate,
         bits=BITS,
         parity=PARITY,
         stop=STOP,
-        tx=Pin(TX_PIN_NUMBER),
-        rx=Pin(RX_PIN_NUMBER),
         txbuf=4096,
         rxbuf=4096,
-        fc=Pin(FC_PIN_NUMBER, Pin.OUT, value=0),
     ):
-        self._uart_id = uart_id
+        self._board = board
         self._baudrate = baudrate
         self._bits = bits
         self._parity = parity
         self._stop = stop
-        self._tx = tx
-        self._rx = rx
         self._txbuf = txbuf
         self._rxbuf = rxbuf
-        self._fc = fc
-        self._rx_buf = bytearray()
+
+        self._local_rx_buf = bytearray()
 
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------
     def init(self):
         self._uart = UART(
-            self._uart_id,
+            self._board.rs485["uart_id"],
             baudrate=self._baudrate,
             bits=self._bits,
             parity=self._parity,
             stop=self._stop,
-            tx=self._tx,
-            rx=self._rx,
+            tx=self._board.rs485["tx"],
+            rx=self._board.rs485["rx"],
             txbuf=self._txbuf,
             rxbuf=self._rxbuf,
         )
@@ -52,11 +46,10 @@ class RS485Controller:
 
     def deinit(self):
         time.sleep_us(50)
-        self._rx_buf = self._rx_buf[len(self._rx_buf) :]
+        self._local_rx_buf = self._local_rx_buf[len(self._local_rx_buf) :]
         self._uart.deinit()
 
-    def loop(self, oledController: DisplayController) -> None:
-        oledController.show_text("RS485 MODE")
+    def loop(self, board) -> None:
         while True:
             try:
                 line = self._readline()
@@ -70,7 +63,7 @@ class RS485Controller:
                     time.sleep_ms(10)
             except Exception as e:
                 try:
-                    oledController.show_text("LOOP_ERROR:" + str(e))
+                    board.display.show_text("LOOP_ERROR:" + str(e))
                     self._send("LOOP_ERROR:" + str(e))
                 except:
                     pass
@@ -107,21 +100,21 @@ class RS485Controller:
     # ── Bus control ───────────────────────────────────────────────────
     def _send(self, msg) -> None:
         data = (msg + "\n").encode()
-        self._fc.value(1)
+        self._board.rs485["ctrl_pin"].value(1)
         time.sleep_us(200)
         self._uart.write(data)
         self._uart.flush()
-        self._fc.value(0)
+        self._board.rs485["ctrl_pin"].value(0)
 
     def _readline(self) -> str | None:
         read = self._uart.read()
         if read:
-            self._rx_buf.extend(read)
+            self._local_rx_buf.extend(read)
 
-        i = self._rx_buf.find(b"\n")
+        i = self._local_rx_buf.find(b"\n")
         if i != -1:
-            line = bytes(self._rx_buf[:i]).decode("utf-8", "ignore").strip()
-            self._rx_buf = self._rx_buf[i + 1 :]
+            line = bytes(self._local_rx_buf[:i]).decode("utf-8", "ignore").strip()
+            self._local_rx_buf = self._local_rx_buf[i + 1 :]
             return line
         return None
 
@@ -242,7 +235,7 @@ class RS485Controller:
         try:
             size = os.stat(filename)[6]
             self._send("CAT:" + str(size))
-            self._fc.value(1)
+            self._board.rs485["ctrl_pin"].value(1)
             time.sleep_us(200)
             with open(filename, "rb") as f:
                 while True:
@@ -251,7 +244,7 @@ class RS485Controller:
                         break
                     self._uart.write(chunk)
                     self._uart.flush()
-            self._fc.value(0)
+            self._board.rs485["ctrl_pin"].value(0)
         except Exception as e:
             self._send("ERROR:" + str(e))
 

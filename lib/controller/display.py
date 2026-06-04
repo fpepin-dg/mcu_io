@@ -1,26 +1,26 @@
-from machine import Pin, I2C, UART
 from lib.constants import LOGO
 
 import lib.modules.ssd1306 as ssd1306
 import framebuf
-import time
 
 
 # ssd1306 docs: https://docs.micropython.org/en/latest/esp8266/tutorial/ssd1306.html
-class DisplayController:
-    def __init__(self, width=128, height=64, sda_pin=16, scl_pin=17, i2c_addr=0x3C):
+class SSD1306Display:
+    def __init__(self, width, height, i2c, i2c_addr):
         self.width = width
         self.height = height
-        self.sda_pin = sda_pin
-        self.scl_pin = scl_pin
         self.i2c_addr = i2c_addr
-        i2c = I2C(sda=Pin(self.sda_pin), scl=Pin(self.scl_pin))
-        self.display = ssd1306.SSD1306_I2C(self.width, self.height, i2c)
+        self.display = ssd1306.SSD1306_I2C(
+            self.width, self.height, i2c, addr=self.i2c_addr
+        )
+        self._current = None
 
     def clear(self):
-        if self.display:
-            self.display.fill(0)
-            self.display.show()
+        if self._current == ("clear",):
+            return
+        self.display.fill(0)
+        self.display.show()
+        self._current = ("clear",)
 
     def _wrap(self, text, chars_per_line):
         lines = []
@@ -45,24 +45,46 @@ class DisplayController:
         return lines
 
     def show_text(self, text, x=0, y=0, wrap=True):
-        if not self.display:
+        token = ("text", text, x, y, wrap)
+        if self._current == token:
             return
-        self.clear()
+        self.display.fill(0)  # inline clear; don't call self.clear()
         self.display.invert(0)
-
         if wrap:
-            chars_per_line = (self.width - x) // 8  # 8px per char -> 16
-            max_lines = (self.height - y) // 8  # 8px per line -> 8
+            chars_per_line = (self.width - x) // 8
+            max_lines = (self.height - y) // 8
             for i, line in enumerate(self._wrap(text, chars_per_line)[:max_lines]):
                 self.display.text(line, x, y + i * 8)
         else:
             self.display.text(text, x, y)
         self.display.show()
+        self._current = token
+
+    def show_error(self, e):
+        self.show_text("ERROR: " + str(e))
 
     def show_logo(self):
-        if self.display:
-            fb = framebuf.FrameBuffer(LOGO, self.width, self.height, framebuf.MONO_HLSB)
-            self.clear()
-            self.display.invert(0)
-            self.display.blit(fb, 0, 0)
-            self.display.show()
+        if self._current == ("logo",):
+            return
+        fb = framebuf.FrameBuffer(LOGO, self.width, self.height, framebuf.MONO_HLSB)
+        self.display.fill(0)
+        self.display.invert(0)
+        self.display.blit(fb, 0, 0)
+        self.display.show()
+        self._current = ("logo",)
+
+
+class NullDisplay:
+    # Pass to board with no display
+    # self._display = NullDisplay()
+    def show_text(self, *a, **k):
+        pass
+
+    def show_logo(self, *a, **k):
+        pass
+
+    def show_error(self, *a, **k):
+        pass
+
+    def clear(self, *a, **k):
+        pass
