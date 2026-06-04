@@ -45,21 +45,21 @@ class AE01T(BoardBase):
             width=128, height=64, i2c=self._i2c, i2c_addr=0x3C
         )
 
-    def set_pin(self, pin, val):
-        p = self._out.get(pin)
+    def set_value(self, name, val):
+        p = self._out.get(name)
         if p is None:
-            raise KeyError("AE01T: no output pin '{}'".format(pin))
+            raise KeyError("AE01T: no output pin '{}'".format(name))
         if isinstance(val, (list, tuple)):  # umodbus passes [0] / [1]
             val = val[0] if val else 0
         p.value(1 if val else 0)
 
-    def get_pin(self, pin):
-        p = self._in.get(pin) or self._out.get(pin)
+    def get_value(self, name):
+        p = self._in.get(name) or self._out.get(name)
         if p is None:
-            raise KeyError("AE01T: no pin '{}'".format(pin))
+            raise KeyError("AE01T: no pin '{}'".format(name))
         return p.value()
 
-    def get_all_pins(self):
+    def get_all_values(self):
         pins = {}
         for k, p in self._in.items():
             pins[k] = p.value()

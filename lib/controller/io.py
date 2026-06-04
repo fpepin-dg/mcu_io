@@ -25,11 +25,11 @@ class IOController:
     def write(self, address, val):
         r = self._resolve(address)
         if r:
-            r[0].set_pin(r[1], val)
+            r[0].set_value(r[1], val)
 
     def read(self, address):
         r = self._resolve(address)
-        return r[0].get_pin(r[1]) if r else None
+        return r[0].get_value(r[1]) if r else None
 
     def is_mapped(self, address):
         return address in self._addr
@@ -39,7 +39,7 @@ class IOController:
         out = {}
         for cid, card in self._cards.items():
             try:
-                pins = card.get_all_pins()
+                pins = card.get_all_values()
             except Exception:
                 continue  # a dead I2C card shouldn't kill the dump
             for name, val in pins.items():

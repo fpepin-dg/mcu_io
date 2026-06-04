@@ -39,8 +39,8 @@ class EXQ4:
             raise KeyError("EX-Q4: no pin '{}'".format(pin))
         return b
 
-    def set_pin(self, pin, val):
-        b = self._bit(pin)
+    def set_value(self, name, val):
+        b = self._bit(name)
         if val:
             # Set the bit b to 1
             # EX: b = 6
@@ -57,12 +57,12 @@ class EXQ4:
             self._olat &= ~(1 << b)
         self._i2c.writeto_mem(self._addr, _OLAT, bytes([self._olat & 0xFF]))
 
-    def get_pin(self, pin):
-        b = self._bit(pin)
+    def get_value(self, name):
+        b = self._bit(name)
         data = self._i2c.readfrom_mem(self._addr, _GPIO, 1)[0]
         return (data >> b) & 1
 
-    def get_all_pins(self):
+    def get_all_values(self):
         data = self._i2c.readfrom_mem(self._addr, _GPIO, 1)[0]  # one read = all 8 lines
         pins = {}
         for name, b in self._out.items():

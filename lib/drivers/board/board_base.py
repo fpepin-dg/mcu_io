@@ -2,13 +2,13 @@ class BoardBase:
     """Hardware abstraction every PLC card implements."""
 
     # ---- digital IO ----
-    def set_pin(self, pin, val):
+    def set_value(self, name, val):
         raise NotImplementedError
 
-    def get_pin(self, pin):
+    def get_value(self, name):
         raise NotImplementedError
 
-    def get_all_pins(self):
+    def get_all_values(self):
         raise NotImplementedError
 
     # ---- resources exposed to controllers ----
