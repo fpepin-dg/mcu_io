@@ -1,10 +1,14 @@
 from lib.drivers.expansion.norvi_ex_q4 import EXQ4
+from lib.drivers.expansion.norvi_ex_anq_04 import ANQ04
 
 
 class IOController:
     def __init__(self, board, cards_cfg, address_map):
-        self._addr = {int(k): v for k, v in address_map.items()}
-        self._cards = {0: board}  # card 0 = main board
+        self._addr = {
+            rtype: {int(k): v for k, v in entries.items()}
+            for rtype, entries in address_map.items()
+        }
+        self._cards = {0: board}
         for cid, cfg in (cards_cfg or {}).items():
             if int(cid) != 0:
                 self._cards[int(cid)] = self._make(cfg, board.i2c)
@@ -13,38 +17,42 @@ class IOController:
         t = cfg.get("type")
         if t == "norvi_ex_q4":
             return EXQ4(i2c, cfg["i2c_addr"])
+        if t == "norvi_ex_anq_04":
+            return ANQ04(i2c, cfg["i2c_addr"], modes=cfg["modes"])
         raise ValueError("Unknown expansion: " + str(t))
 
-    def _resolve(self, address):
-        m = self._addr.get(address)
+    def _resolve(self, reg_type, address):
+        m = self._addr.get(reg_type, {}).get(address)
         if m is None:
             return None
         card = self._cards.get(m["card"])
         return (card, m["pin"]) if card else None
 
-    def write(self, address, val):
-        r = self._resolve(address)
+    def write(self, reg_type, address, value):
+        r = self._resolve(reg_type, address)
         if r:
-            r[0].set_value(r[1], val)
+            r[0].set_value(r[1], value)
 
-    def read(self, address):
-        r = self._resolve(address)
+    def read(self, reg_type, address):
+        r = self._resolve(reg_type, address)
         return r[0].get_value(r[1]) if r else None
 
-    def is_mapped(self, address):
-        return address in self._addr
+    def is_mapped(self, reg_type, address):
+        return address in self._addr.get(reg_type, {})
 
     def read_all(self):
-        """Every card's pins, namespaced by card id: {'0:T5': 1, '1:Q1': 0, ...}."""
+        """One read per card, nested by card id:
+        {0: {"T5": 0, ...}, 1: {"AO.0": 4095, ...}}"""
         out = {}
         for cid, card in self._cards.items():
             try:
-                pins = card.get_all_values()
-            except Exception:
-                continue  # a dead I2C card shouldn't kill the dump
-            for name, val in pins.items():
-                out["{}:{}".format(cid, name)] = val
+                out[cid] = card.get_all_values()  # driver batches its own read
+            except Exception as e:
+                board = self._cards[0]
+                if board.has_display:
+                    board.display.show_error(e)
+                out[cid] = {}  # dead card -> empty, not missing
         return out
 
-    def mapping_for(self, address):
-        return self._addr.get(address)
+    def mapping_for(self, reg_type, address):
+        return self._addr.get(reg_type, {}).get(address)

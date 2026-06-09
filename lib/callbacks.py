@@ -10,14 +10,15 @@ class RegisterCallbacks:
 
     def coil_set(self, reg_type, address, val):
         bit = val[0] if isinstance(val, (list, tuple)) else val
-        self._io.write(address, bool(bit))
+        self._io.write(reg_type, address, bool(bit))
 
     # ---- HREGS (read/write) ----
     def hreg_get(self, reg_type, address, val):
         pass
 
     def hreg_set(self, reg_type, address, val):
-        pass
+        pct = val[0] if isinstance(val, (list, tuple)) else val
+        self._io.write(reg_type, address, pct)
 
     # ---- ISTS (read-only) ----
     def ist_get(self, reg_type, address, val):

@@ -34,20 +34,19 @@ class ModbusController:
         self._stop = stop
         self._poll_interval_ms = poll_interval_ms
 
-        # map Modbus address -> (reg_type, "card:pin" key matching read_all output)
         self._refresh_list = []
         for rtype in ("COILS", "HREGS", "ISTS", "IREGS"):
             for name, reg in registers.get(rtype, {}).items():
-                mb_addr = reg["register"]
-                m = io.mapping_for(mb_addr)  # {"pin":..,"card":..} or None
+                m = io.mapping_for(rtype, reg["register"])
                 if m:
-                    key = "{}:{}".format(m["card"], m["pin"])
-                    self._refresh_list.append((rtype, mb_addr, key))
+                    self._refresh_list.append(
+                        (rtype, reg["register"], m["card"], m["pin"])
+                    )
 
     def _refresh(self):
         snapshot = self._io.read_all()
-        for rtype, addr, key in self._refresh_list:
-            val = snapshot.get(key)
+        for rtype, addr, card, pin in self._refresh_list:
+            val = snapshot.get(card, {}).get(pin)
             if val is None:
                 continue
             try:
@@ -57,7 +56,7 @@ class ModbusController:
                     self._mb.set_hreg(addr, val)
                 elif rtype == "ISTS":
                     self._mb.set_ist(addr, bool(val))
-                else:
+                elif rtype == "IREGS":
                     self._mb.set_ireg(addr, val)
             except Exception:
                 pass
@@ -97,7 +96,7 @@ class ModbusController:
                     last = now
                 self._mb.process()  # must stay responsive every loop
             except Exception as e:
-                board.display.show_error(e)
+                board.display.show_text("{}: {}".format(type(e).__name__, e))
                 time.sleep_ms(50)
                 continue
             if self._mb.get_coil(0) == MODE_UPLOAD:

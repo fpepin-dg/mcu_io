@@ -63,7 +63,7 @@ class RS485Controller:
                     time.sleep_ms(10)
             except Exception as e:
                 try:
-                    board.display.show_text("LOOP_ERROR:" + str(e))
+                    board.display.show_error(e)
                     self._send("LOOP_ERROR:" + str(e))
                 except:
                     pass
