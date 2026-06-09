@@ -19,13 +19,13 @@ except Exception:
 settings = (config or {}).get("SETTINGS", {})
 
 freq = settings.get("I2C_FREQ", FREQ)
-board_type = config["CARD"]["0"]["type"] if config else DEFAULT_BOARD
+board_type = config["CARDS"]["0"]["type"] if config else DEFAULT_BOARD
 board = make_board(board_type, freq)
 
 baudrate = settings.get("BAUDRATE", BAUDRATE)
 modbusController = None
 if config:
-    io = IOController(board, config["CARD"], config["ADDRESS_MAP"])
+    io = IOController(board, config["CARDS"], config["ADDRESS_MAP"])
     modbusController = ModbusController(
         board=board,
         io=io,
@@ -53,3 +53,4 @@ while True:
 
     except Exception as e:
         board.display.show_error(e)
+        continue

@@ -9,6 +9,8 @@ BITS = 8
 PARITY = None
 STOP = 1
 
+ANV01_FSC = 16581
+
 MODE_RUN = 0
 MODE_UPLOAD = 1
 

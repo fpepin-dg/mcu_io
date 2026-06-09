@@ -1,5 +1,6 @@
 from lib.drivers.expansion.norvi_ex_q4 import EXQ4
 from lib.drivers.expansion.norvi_ex_anq_04 import ANQ04
+from lib.drivers.expansion.norvi_ex_anv01 import ANV01
 
 
 class IOController:
@@ -17,8 +18,14 @@ class IOController:
         t = cfg.get("type")
         if t == "norvi_ex_q4":
             return EXQ4(i2c, cfg["i2c_addr"])
-        if t == "norvi_ex_anq_04":
+        elif t == "norvi_ex_anq_04":
             return ANQ04(i2c, cfg["i2c_addr"], modes=cfg["modes"])
+        elif t == "norvi_ex_anv01":
+            return ANV01(
+                i2c,
+                cfg["i2c_addr"],
+                full_scale_counts=cfg.get("full_scale_counts", None),
+            )
         raise ValueError("Unknown expansion: " + str(t))
 
     def _resolve(self, reg_type, address):
