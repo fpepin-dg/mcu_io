@@ -29,7 +29,7 @@ class ANV01:
         config = (
             (1 << 15)  # OS = 1: start single conversion
             | (mux << 12)  # MUX: single-ended AINx vs GND
-            | (0b000 << 9)  # PGA = 000: ±6.144V (max input headroom)
+            | (0b001 << 9)  # PGA = 001: ±4.096V (max input headroom)
             | (1 << 8)  # MODE = 1: single-shot
             | (0b100 << 5)  # DR = 100: 128SPS
             | 0b00011  # COMP_QUE = 11 (disabled) + comparator bits 0
