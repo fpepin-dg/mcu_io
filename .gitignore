@@ -1,3 +1,5 @@
 */backup*/
 /backup*/
 /config.json
+__pycache__/
+*.py[cod]
